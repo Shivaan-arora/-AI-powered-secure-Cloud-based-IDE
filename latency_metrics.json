@@ -1,0 +1,17 @@
+{
+  "iterations": 100,
+  "ast_scan_latency": {
+    "mean_ms": 0.077,
+    "median_ms": 0.07,
+    "p95_ms": 0.124,
+    "p99_ms": 0.163,
+    "std_dev_ms": 0.03
+  },
+  "ml_feature_extraction_latency": {
+    "mean_ms": 0.083,
+    "median_ms": 0.08,
+    "p95_ms": 0.152,
+    "p99_ms": 0.169,
+    "std_dev_ms": 0.039
+  }
+}

@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SecureCloud IDE</title>
+  <style>
+    /* ── Reset & Base ────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-darkest:  #0d1117;
+      --bg-dark:     #161b22;
+      --bg-panel:    #1c2128;
+      --bg-card:     #21262d;
+      --bg-hover:    #30363d;
+      --border:      #30363d;
+      --border-light:#484f58;
+      --text-primary:#e6edf3;
+      --text-muted:  #8b949e;
+      --text-dim:    #6e7681;
+      --accent:      #58a6ff;
+      --accent-dark: #1f6feb;
+      --green:       #3fb950;
+      --yellow:      #d29922;
+      --orange:      #f0883e;
+      --red:         #f85149;
+      --purple:      #a371f7;
+      --header-h:    52px;
+      --sidebar-w:   220px;
+      --bottom-h:    240px;
+      --right-w:     280px;
+    }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-darkest); color: var(--text-primary); overflow: hidden; }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    #header {
+      height: var(--header-h); background: var(--bg-dark);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 16px; gap: 12px; z-index: 100;
+      position: relative; flex-shrink: 0;
+    }
+    .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; color: var(--text-primary); }
+    .logo-icon { width: 28px; height: 28px; background: linear-gradient(135deg, #58a6ff, #a371f7); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .header-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+    #project-name { color: var(--text-muted); font-size: 13px; padding: 4px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; }
+    .spacer { flex: 1; }
+    .lang-select { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 12px; padding: 5px 8px; cursor: pointer; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
+    .btn:hover { opacity: 0.85; }
+    .btn:active { opacity: 0.7; transform: scale(0.98); }
+    .btn-save { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border); }
+    .btn-scan { background: #1f3a5f; color: #58a6ff; border: 1px solid #1f6feb; }
+    .btn-run  { background: #1a4a2e; color: #3fb950; border: 1px solid #238636; }
+    .btn-run.blocked { background: #4a1a1a; color: var(--red); border-color: #6e2020; }
+    .btn-run.loading { opacity: 0.6; pointer-events: none; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.red { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    #layout { display: flex; height: calc(100vh - var(--header-h)); }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w); background: var(--bg-dark);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden;
+    }
+    .sidebar-section { padding: 8px; }
+    .sidebar-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); padding: 8px 8px 6px; }
+    .file-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 13px;
+      color: var(--text-muted); transition: background 0.1s;
+    }
+    .file-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .file-item.active { background: var(--bg-hover); color: var(--accent); }
+    .file-icon { font-size: 14px; }
+    .sidebar-actions { display: flex; gap: 6px; padding: 8px; flex-wrap: wrap; }
+    .sidebar-btn { flex: 1; min-width: 60px; padding: 5px 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px; color: var(--text-muted); font-size: 11px; cursor: pointer; text-align: center; }
+    .sidebar-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .sidebar-divider { height: 1px; background: var(--border); margin: 4px 8px; }
+    .sidebar-info { padding: 8px 12px; font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+
+    /* ── Center (Editor + Bottom) ────────────────────────────────────── */
+    #center { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+    #editor-area { flex: 1; position: relative; overflow: hidden; }
+    #monaco-container { position: absolute; inset: 0; }
+
+    /* ── Bottom panel ────────────────────────────────────────────────── */
+    #bottom {
+      height: var(--bottom-h); background: var(--bg-dark);
+      border-top: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--bg-darkest); }
+    .tab { padding: 8px 16px; font-size: 12px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.15s; }
+    .tab:hover { color: var(--text-muted); }
+    .tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+    .tab-badge { display: inline-block; margin-left: 5px; padding: 1px 5px; border-radius: 10px; font-size: 10px; background: var(--red); color: white; }
+    .tab-badge.green { background: var(--green); }
+    .tab-content { flex: 1; overflow: auto; padding: 10px 14px; font-family: 'SF Mono', 'Monaco', 'Consolas', monospace; font-size: 12.5px; line-height: 1.6; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    .output-line { margin: 1px 0; }
+    .output-line.stdout { color: #e6edf3; }
+    .output-line.stderr { color: var(--red); }
+    .output-line.info  { color: var(--accent); }
+    .output-line.warn  { color: var(--yellow); }
+    .output-line.success { color: var(--green); }
+    .output-line.muted { color: var(--text-dim); }
+    .exec-time { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+
+    /* ── Right Panel ─────────────────────────────────────────────────── */
+    #right-panel {
+      width: var(--right-w); background: var(--bg-dark);
+      border-left: 1px solid var(--border); overflow-y: auto;
+      flex-shrink: 0; padding-bottom: 20px;
+    }
+    .panel-header { padding: 12px 14px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+    .risk-badge {
+      margin: 12px 14px; padding: 8px 12px; border-radius: 8px;
+      display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px;
+    }
+    .risk-LOW      { background: #1a2e1a; border: 1px solid #2ea043; color: #3fb950; }
+    .risk-MEDIUM   { background: #2e2a1a; border: 1px solid #9e6a03; color: #d29922; }
+    .risk-HIGH     { background: #2e1a1a; border: 1px solid #9e3030; color: #f0883e; }
+    .risk-CRITICAL { background: #2e1015; border: 1px solid #8b0000; color: #f85149; }
+    .risk-NONE     { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim); }
+    .finding-card {
+      margin: 6px 10px; padding: 8px 10px; border-radius: 6px;
+      background: var(--bg-card); border-left: 3px solid var(--border-light); font-size: 11.5px;
+    }
+    .finding-card.HIGH     { border-left-color: var(--orange); }
+    .finding-card.CRITICAL { border-left-color: var(--red); }
+    .finding-card.MEDIUM   { border-left-color: var(--yellow); }
+    .finding-card.LOW      { border-left-color: var(--green); }
+    .finding-name { font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+    .finding-meta { color: var(--text-dim); font-size: 10.5px; margin-bottom: 3px; }
+    .finding-msg { color: var(--text-muted); line-height: 1.4; }
+    .ml-section { margin: 10px 14px; padding: 10px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); }
+    .ml-label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ml-value { font-size: 16px; font-weight: 700; }
+    .ml-value.BENIGN    { color: var(--green); }
+    .ml-value.SUSPICIOUS { color: var(--yellow); }
+    .ml-value.MALICIOUS  { color: var(--red); }
+    .conf-bar { margin-top: 6px; height: 4px; background: var(--bg-hover); border-radius: 2px; overflow: hidden; }
+    .conf-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.4s; }
+    .recs { margin: 8px 14px; }
+    .rec-title { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 6px; }
+    .rec-item { font-size: 11.5px; color: var(--text-muted); padding: 4px 0; border-bottom: 1px solid var(--border); line-height: 1.4; display: flex; gap: 6px; }
+    .rec-item::before { content: '💡'; flex-shrink: 0; }
+
+    /* ── Toasts ──────────────────────────────────────────────────────── */
+    #toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+    .toast { padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.4); animation: slideIn 0.2s ease; max-width: 300px; }
+    .toast.success { background: #1a4a2e; border: 1px solid #2ea043; color: var(--green); }
+    .toast.error   { background: #2e1a1a; border: 1px solid #8b0000; color: var(--red); }
+    .toast.info    { background: #1f3a5f; border: 1px solid #1f6feb; color: var(--accent); }
+    @keyframes slideIn { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: translateX(0); } }
+
+    /* ── Spinner ─────────────────────────────────────────────────────── */
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Empty states ────────────────────────────────────────────────── */
+    .empty-state { padding: 24px 14px; text-align: center; color: var(--text-dim); font-size: 12px; line-height: 2; }
+    .empty-icon { font-size: 28px; margin-bottom: 8px; }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- HEADER                                                          -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div id="header">
+  <div class="logo">
+    <div class="logo-icon">🔒</div>
+    SecureCloud IDE
+  </div>
+  <div class="header-sep"></div>
+  <span id="project-name">my_project</span>
+  <div class="header-sep"></div>
+  <div class="status-dot" id="api-dot" title="API Status"></div>
+  <span style="font-size:11px; color:var(--text-dim)" id="api-status">connecting…</span>
+  <span id="collab-badge" style="font-size:11px; background:#1f3a5f; color:#58a6ff; padding:3px 8px; border-radius:12px; border:1px solid #1f6feb;">👥 1 online</span>
+  <div class="spacer"></div>
+  <select class="lang-select" id="lang-select">
+    <option value="python">🐍 Python</option>
+    <option value="cpp">⚙️ C++</option>
+    <option value="java">☕ Java</option>
+  </select>
+  <button class="btn btn-save" onclick="saveFile()">💾 Save</button>
+  <button class="btn btn-save" onclick="downloadZip()" title="Download Project ZIP">📦 Export</button>
+  <button class="btn btn-scan" onclick="runScan()" id="btn-scan">🔍 Scan</button>
+  <button class="btn btn-run"  onclick="runCode()" id="btn-run">▶ Run</button>
+  <button class="btn" style="background:#3b2d54; color:#d2a8ff; border:1px solid #8957e5;" onclick="askAI()">🤖 AI Assist</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- LAYOUT                                                          -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div id="layout">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div class="sidebar-title">Explorer</div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title" style="padding-top:4px;">Files</div>
+      <div class="file-item active" id="file-main" onclick="switchFile('main')">
+        <span class="file-icon">🐍</span> main.py
+      </div>
+      <div class="file-item" id="file-test" onclick="switchFile('test')">
+        <span class="file-icon">🧪</span> test.py
+      </div>
+      <div class="file-item" id="file-scratch" onclick="switchFile('scratch')">
+        <span class="file-icon">📄</span> scratch.py
+      </div>
+    </div>
+
+    <div class="sidebar-actions">
+      <button class="sidebar-btn" onclick="newFile()">+ New</button>
+      <button class="sidebar-btn" onclick="clearEditor()">🗑 Clear</button>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="sidebar-info">
+      <strong style="color:var(--text-muted);">Security Pipeline</strong><br>
+      1. Input validation<br>
+      2. AST static scan<br>
+      3. ML classification<br>
+      4. Docker sandbox<br>
+      5. Resource limits
+    </div>
+  </div>
+
+  <!-- CENTER: Editor + Bottom -->
+  <div id="center">
+    <div id="editor-area">
+      <div id="monaco-container"></div>
+    </div>
+
+    <!-- BOTTOM PANEL -->
+    <div id="bottom">
+      <div class="tab-bar">
+        <div class="tab active" onclick="switchTab('output')">Output</div>
+        <div class="tab" onclick="switchTab('terminal')" id="tab-terminal">💻 Terminal</div>
+        <div class="tab" onclick="switchTab('errors')" id="tab-errors">Errors</div>
+        <div class="tab" onclick="switchTab('security')" id="tab-security">Security</div>
+        <div class="tab" onclick="switchTab('ai')" id="tab-ai">🤖 AI Assistant</div>
+        <div class="tab" onclick="switchTab('resources')" id="tab-resources">📈 Resources</div>
+        <div class="tab" onclick="switchTab('history')" id="tab-history">History</div>
+      </div>
+      <div class="tab-content">
+        <!-- Output -->
+        <div class="tab-pane active" id="pane-output">
+          <div class="output-line info">SecureCloud IDE — ready.</div>
+          <div class="output-line muted">Write code, click ▶ Run or 🔍 Scan.</div>
+        </div>
+        <!-- Terminal -->
+        <div class="tab-pane" id="pane-terminal">
+          <div id="term-output" style="white-space: pre-wrap; color:#3fb950; min-height: 120px;">🔒 Connected to Secure Isolated PTY Sandbox\n$ </div>
+          <div style="display:flex; margin-top:8px;">
+            <span style="color:#3fb950; margin-right:6px;">$&nbsp;</span>
+            <input id="term-input" style="flex:1; background:transparent; border:none; color:#e6edf3; font-family:monospace; outline:none;" placeholder="Type command (e.g. ls, python3 --version) and press Enter..." onkeydown="handleTermInput(event)"/>
+          </div>
+        </div>
+        <!-- Errors -->
+        <div class="tab-pane" id="pane-errors">
+          <div class="empty-state"><div class="empty-icon">✅</div>No errors detected.</div>
+        </div>
+        <!-- Security log -->
+        <div class="tab-pane" id="pane-security">
+          <div class="empty-state"><div class="empty-icon">🔍</div>Run a security scan to see results here.</div>
+        </div>
+        <!-- AI Assistant Pane -->
+        <div class="tab-pane" id="pane-ai">
+          <div id="ai-response" style="line-height:1.6; color:#c9d1d9;">Click 🤖 AI Assist in the header to analyze code or debug current errors.</div>
+        </div>
+        <!-- Resources Telemetry -->
+        <div class="tab-pane" id="pane-resources">
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+            <div style="background:#21262d; padding:12px; border-radius:6px; border:1px solid #30363d;">
+              <div style="color:#8b949e; font-size:11px; font-weight:bold;">CPU USAGE</div>
+              <div style="font-size:20px; font-weight:bold; color:#58a6ff;" id="res-cpu">0.0%</div>
+              <div class="conf-bar"><div class="conf-fill" id="res-cpu-bar" style="width:0%"></div></div>
+            </div>
+            <div style="background:#21262d; padding:12px; border-radius:6px; border:1px solid #30363d;">
+              <div style="color:#8b949e; font-size:11px; font-weight:bold;">RAM USAGE</div>
+              <div style="font-size:20px; font-weight:bold; color:#3fb950;" id="res-mem">0.0%</div>
+              <div class="conf-bar"><div class="conf-fill" id="res-mem-bar" style="width:0%; background:#3fb950;"></div></div>
+            </div>
+          </div>
+        </div>
+        <!-- History -->
+        <div class="tab-pane" id="pane-history">
+          <div class="empty-state"><div class="empty-icon">📋</div>Execution history will appear here.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+    <div class="panel-header">🛡 Security Analysis</div>
+
+    <div id="risk-display" class="risk-badge risk-NONE">
+      <span>⬡</span> <span>NOT SCANNED</span>
+    </div>
+
+    <div id="ml-section" class="ml-section" style="display:none">
+      <div class="ml-label">ML Classification</div>
+      <div class="ml-value" id="ml-label-val">—</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:3px;">Confidence: <span id="ml-conf">—</span></div>
+      <div class="conf-bar"><div class="conf-fill" id="ml-bar" style="width:0%"></div></div>
+    </div>
+
+    <div id="findings-container"></div>
+
+    <div id="recs-container" class="recs" style="display:none">
+      <div class="rec-title">Recommendations</div>
+      <div id="recs-list"></div>
+    </div>
+
+    <div style="padding:10px 14px;font-size:11px;color:var(--text-dim);border-top:1px solid var(--border);margin-top:8px;">
+      <strong style="color:var(--text-muted);">Scan Info</strong><br>
+      Time: <span id="scan-time">—</span><br>
+      Findings: <span id="findings-count">—</span><br>
+      Engine: AST + ML (Phase 13)
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<!-- Monaco from CDN (no Node needed) -->
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ══════════════════════════════════════════════════════════════════
+const API = window.location.origin;
+
+// ══════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════
+let editor = null;
+let currentFile = 'main';
+let currentTab = 'output';
+let execHistory = [];
+
+const fileContents = {
+  main: `# SecureCloud IDE — main.py\n# Write your Python code here and click ▶ Run\n\nprint("Hello from SecureCloud IDE!")\n\nfor i in range(5):\n    print(f"  Line {i+1}: {'=' * (i+1)}")\n\nprint("\\nDone! 🎉")`,
+  test: `# test.py — Unit tests\n\ndef add(a, b):\n    return a + b\n\ndef test_add():\n    assert add(2, 3) == 5\n    assert add(-1, 1) == 0\n    print("All tests passed ✅")\n\ntest_add()`,
+  scratch: `# scratch.py — Scratchpad\n\nimport math\n\nradius = 7\narea = math.pi * radius ** 2\nprint(f"Circle area (r={radius}): {area:.2f}")`
+};
+
+// ══════════════════════════════════════════════════════════════════
+// MONACO SETUP
+// ══════════════════════════════════════════════════════════════════
+require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs' } });
+require(['vs/editor/editor.main'], function() {
+  editor = monaco.editor.create(document.getElementById('monaco-container'), {
+    value: fileContents[currentFile],
+    language: 'python',
+    theme: 'vs-dark',
+    fontSize: 14,
+    fontFamily: "'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace",
+    minimap: { enabled: true },
+    scrollBeyondLastLine: false,
+    renderLineHighlight: 'all',
+    lineNumbers: 'on',
+    automaticLayout: true,
+    tabSize: 4,
+    wordWrap: 'on',
+    padding: { top: 12, bottom: 12 },
+    smoothScrolling: true,
+    cursorBlinking: 'smooth',
+    bracketPairColorization: { enabled: true },
+    suggest: { showWords: true },
+  });
+
+  // Ctrl/Cmd+S = Save
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveFile());
+  // Ctrl+Enter = Run
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => runCode());
+  // Ctrl+Shift+S = Scan
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyS, () => runScan());
+
+  checkApiStatus();
+  setInterval(checkApiStatus, 10000);
+});
+
+// ══════════════════════════════════════════════════════════════════
+// API HEALTH
+// ══════════════════════════════════════════════════════════════════
+async function checkApiStatus() {
+  try {
+    const r = await fetch(`${API}/health`, { signal: AbortSignal.timeout(3000) });
+    const ok = r.ok;
+    document.getElementById('api-dot').className = 'status-dot' + (ok ? '' : ' red');
+    document.getElementById('api-status').textContent = ok ? 'API online' : 'API error';
+  } catch {
+    document.getElementById('api-dot').className = 'status-dot red';
+    document.getElementById('api-status').textContent = 'API offline';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SECURITY SCAN
+// ══════════════════════════════════════════════════════════════════
+async function runScan() {
+  const code = editor.getValue();
+  if (!code.trim()) { toast('No code to scan', 'info'); return; }
+
+  const btn = document.getElementById('btn-scan');
+  btn.innerHTML = '<span class="spinner"></span> Scanning…';
+  btn.disabled = true;
+
+  switchTab('security');
+  setPaneSecurity('<div class="output-line info">Scanning…</div>');
+
+  try {
+    const res = await fetch(`${API}/security/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, language: getLang() })
+    });
+    const data = await res.json();
+    renderScanResult(data);
+    toast(`Scan complete — Risk: ${data.risk}`, data.risk === 'LOW' ? 'success' : 'error');
+  } catch (e) {
+    setPaneSecurity(`<div class="output-line stderr">Scan failed: ${e.message}</div>`);
+    toast('Scan failed — is backend running?', 'error');
+  } finally {
+    btn.innerHTML = '🔍 Scan';
+    btn.disabled = false;
+  }
+}
+
+function renderScanResult(data) {
+  // Risk badge
+  const riskEl = document.getElementById('risk-display');
+  const icons = { LOW:'🟢', MEDIUM:'🟡', HIGH:'🟠', CRITICAL:'🔴' };
+  riskEl.className = `risk-badge risk-${data.risk}`;
+  riskEl.innerHTML = `<span>${icons[data.risk] || '⬡'}</span><span>${data.risk}</span>`;
+
+  // Findings
+  document.getElementById('findings-count').textContent = data.findings.length;
+  document.getElementById('scan-time').textContent = `${(data.scan_time * 1000).toFixed(1)} ms`;
+
+  const fc = document.getElementById('findings-container');
+  if (data.findings.length === 0) {
+    fc.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div>No suspicious patterns found.</div>';
+  } else {
+    fc.innerHTML = data.findings.map(f => `
+      <div class="finding-card ${f.severity}">
+        <div class="finding-name">${escHtml(f.name)}</div>
+        <div class="finding-meta">${f.severity} · ${f.type}${f.line ? ` · line ${f.line}` : ''}</div>
+        <div class="finding-msg">${escHtml(f.message)}</div>
+      </div>`).join('');
+  }
+
+  // Recommendations
+  const recs = buildRecs(data);
+  const recsEl = document.getElementById('recs-container');
+  if (recs.length) {
+    recsEl.style.display = '';
+    document.getElementById('recs-list').innerHTML = recs.map(r => `<div class="rec-item">${escHtml(r)}</div>`).join('');
+  } else {
+    recsEl.style.display = 'none';
+  }
+
+  // Tab badge
+  const tb = document.getElementById('tab-security');
+  if (data.findings.length > 0) {
+    tb.innerHTML = `Security <span class="tab-badge">${data.findings.length}</span>`;
+  }
+
+  // Security pane
+  setPaneSecurity(
+    `<div class="output-line ${data.risk === 'LOW' ? 'success' : 'warn'}">Risk: ${data.risk} — ${data.summary}</div>` +
+    data.findings.map(f =>
+      `<div class="output-line ${f.severity === 'CRITICAL' || f.severity === 'HIGH' ? 'stderr' : 'warn'}">` +
+      `  [${f.severity}] ${f.name} @ line ${f.line || '?'}: ${f.message}</div>`
+    ).join('')
+  );
+}
+
+function buildRecs(data) {
+  const recs = [];
+  const names = data.findings.map(f => f.name);
+  if (names.includes('eval') || names.includes('exec')) recs.push('Replace eval/exec with safe alternatives like ast.literal_eval');
+  if (names.includes('subprocess') || names.includes('os')) recs.push('Avoid shell execution — use library functions instead');
+  if (names.includes('socket')) recs.push('Network access is disabled in the sandbox');
+  if (names.includes('ctypes') || names.includes('pty')) recs.push('C-level calls are not permitted in the sandbox');
+  if (data.risk === 'LOW' && data.findings.length === 0) recs.push('Code looks clean — safe to execute in sandbox');
+  return recs;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RUN CODE
+// ══════════════════════════════════════════════════════════════════
+async function runCode() {
+  const code = editor.getValue();
+  if (!code.trim()) { toast('No code to run', 'info'); return; }
+
+  const btn = document.getElementById('btn-run');
+  btn.innerHTML = '<span class="spinner"></span> Running…';
+  btn.className = 'btn btn-run loading';
+  btn.disabled = true;
+
+  switchTab('output');
+  setPaneOutput('<div class="output-line muted">⏳ Scanning and executing…</div>');
+
+  const t0 = Date.now();
+  try {
+    const res = await fetch(`${API}/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: getLang(), code, stdin: '' })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errData.detail?.message || errData.detail || `Server returned HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+
+    renderExecResult(data, elapsed);
+    addHistory(data, elapsed, code);
+
+    // Also update right panel risk & ML display
+    if (data.security) {
+      const icons = { LOW:'🟢', MEDIUM:'🟡', HIGH:'🟠', CRITICAL:'🔴' };
+      const riskEl = document.getElementById('risk-display');
+      riskEl.className = `risk-badge risk-${data.security.risk}`;
+      riskEl.innerHTML = `<span>${icons[data.security.risk]||'⬡'}</span><span>${data.security.risk}</span>`;
+      document.getElementById('findings-count').textContent = data.security.findings_count;
+
+      if (data.security.ml_label) {
+        document.getElementById('ml-section').style.display = 'block';
+        const lblEl = document.getElementById('ml-label-val');
+        lblEl.textContent = data.security.ml_label;
+        lblEl.className = `ml-value ${data.security.ml_label}`;
+        const confPercent = Math.round((data.security.ml_confidence || 0) * 100);
+        document.getElementById('ml-conf').textContent = `${confPercent}%`;
+        document.getElementById('ml-bar').style.width = `${confPercent}%`;
+      }
+    }
+  } catch (e) {
+    setPaneOutput(`<div class="output-line stderr">❌ Failed to reach backend: ${e.message}</div><div class="output-line muted">Make sure the backend is running on port 8000.</div>`);
+    toast('Execution failed — is backend running?', 'error');
+  } finally {
+    btn.innerHTML = '▶ Run';
+    btn.className = 'btn btn-run';
+    btn.disabled = false;
+  }
+}
+
+function renderExecResult(data, elapsed) {
+  let html = '';
+  const statusIcon = { success:'✅', error:'❌', blocked:'🚫', timeout:'⏱' };
+  const statusClass = { success:'success', error:'stderr', blocked:'stderr', timeout:'warn' };
+
+  html += `<div class="output-line ${statusClass[data.status] || 'info'}">${statusIcon[data.status] || '•'} Status: ${data.status.toUpperCase()}</div>`;
+
+  if (data.status === 'blocked') {
+    html += `<div class="output-line stderr">⛔ ${escHtml(data.message || 'Execution blocked by security scanner')}</div>`;
+    html += `<div class="output-line warn">Risk level: ${data.security?.risk}  |  Findings: ${data.security?.findings_count}</div>`;
+    html += `<div class="output-line muted">Run 🔍 Scan to see detailed findings in the Security panel.</div>`;
+    toast(`Blocked — Risk: ${data.security?.risk}`, 'error');
+    document.getElementById('btn-run').className = 'btn btn-run blocked';
+    setTimeout(() => document.getElementById('btn-run').className = 'btn btn-run', 2000);
+  } else {
+    if (data.stdout) {
+      html += `<div class="output-line muted">── stdout ────────────────────────────</div>`;
+      data.stdout.split('\n').forEach(l => {
+        html += `<div class="output-line stdout">${escHtml(l)}</div>`;
+      });
+    }
+    if (data.stderr) {
+      switchTab('errors');
+      html += `<div class="output-line muted">── stderr ────────────────────────────</div>`;
+      data.stderr.split('\n').forEach(l => {
+        html += `<div class="output-line stderr">${escHtml(l)}</div>`;
+      });
+    }
+    if (!data.stdout && !data.stderr) {
+      html += `<div class="output-line muted">(no output)</div>`;
+    }
+    html += `<div class="exec-time">⏱ Execution: ${data.execution_time}s  |  Total: ${elapsed}s  |  Risk: ${data.security?.risk || '—'}</div>`;
+    toast('Executed successfully', 'success');
+  }
+
+  setPaneOutput(html);
+
+  // Errors tab
+  if (data.stderr) {
+    document.getElementById('tab-errors').innerHTML = 'Errors <span class="tab-badge">!</span>';
+    document.getElementById('pane-errors').innerHTML = data.stderr.split('\n').map(l =>
+      `<div class="output-line stderr">${escHtml(l)}</div>`).join('');
+  } else {
+    document.getElementById('tab-errors').innerHTML = 'Errors';
+    document.getElementById('pane-errors').innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div>No errors.</div>';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// HISTORY
+// ══════════════════════════════════════════════════════════════════
+function addHistory(data, elapsed, code) {
+  execHistory.unshift({ data, elapsed, code, time: new Date().toLocaleTimeString() });
+  if (execHistory.length > 20) execHistory.pop();
+  renderHistory();
+}
+
+async function renderHistory() {
+  const icons = { success:'✅', error:'❌', blocked:'🚫', timeout:'⏱' };
+  try {
+    const res = await fetch(`${API}/executions`);
+    if (res.ok) {
+      const dbLogs = await res.json();
+      if (dbLogs && dbLogs.length > 0) {
+        document.getElementById('pane-history').innerHTML = dbLogs.map(h => `
+          <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+            <div>${icons[h.status] || '•'} <strong>${h.status.toUpperCase()}</strong> &nbsp;·&nbsp; <span style="color:var(--text-dim)">${new Date(h.created_at).toLocaleTimeString()}</span></div>
+            <div style="color:var(--text-dim);font-size:11px;">Lang: ${h.language} &nbsp;·&nbsp; Risk: ${h.risk_level} &nbsp;·&nbsp; ${h.execution_time}s</div>
+          </div>`).join('');
+        document.getElementById('tab-history').innerHTML = `History <span class="tab-badge green">${dbLogs.length}</span>`;
+        return;
+      }
+    }
+  } catch(e) {}
+
+  document.getElementById('pane-history').innerHTML = execHistory.map((h, i) => `
+    <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+      <div>${icons[h.data.status]} ${h.data.status.toUpperCase()} &nbsp;·&nbsp; <span style="color:var(--text-dim)">${h.time}</span></div>
+      <div style="color:var(--text-dim);font-size:11px;">Risk: ${h.data.security?.risk||'—'} &nbsp;·&nbsp; ${h.elapsed}s &nbsp;·&nbsp; ${h.code.length} chars</div>
+    </div>`).join('') || '<div class="empty-state"><div class="empty-icon">📋</div>No executions yet.</div>';
+  const tb = document.getElementById('tab-history');
+  if (execHistory.length > 0) tb.innerHTML = `History <span class="tab-badge green">${execHistory.length}</span>`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FILE MANAGEMENT
+// ══════════════════════════════════════════════════════════════════
+function switchFile(name) {
+  if (!editor) return;
+  fileContents[currentFile] = editor.getValue();
+  currentFile = name;
+  editor.setValue(fileContents[name] || '');
+  document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById(`file-${name}`);
+  if (el) el.classList.add('active');
+}
+
+function saveFile() {
+  if (!editor) return;
+  fileContents[currentFile] = editor.getValue();
+  toast(`Saved ${currentFile}.py`, 'success');
+}
+
+function newFile() {
+  const name = prompt('File name (without .py):');
+  if (!name || !/^[\w-]+$/.test(name)) { toast('Invalid filename', 'error'); return; }
+  fileContents[name] = `# ${name}.py\n`;
+  const sidebar = document.querySelector('#sidebar .sidebar-section');
+  const div = document.createElement('div');
+  div.className = 'file-item';
+  div.id = `file-${name}`;
+  div.onclick = () => switchFile(name);
+  div.innerHTML = `<span class="file-icon">📄</span> ${name}.py`;
+  sidebar.appendChild(div);
+  switchFile(name);
+}
+
+function clearEditor() {
+  if (editor && confirm('Clear current file?')) { editor.setValue(''); fileContents[currentFile] = ''; }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════════════════════
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  const tabs = ['output','terminal','errors','security','ai','resources','history'];
+  const tabEls = document.querySelectorAll('.tab');
+  tabEls[tabs.indexOf(name)]?.classList.add('active');
+  document.getElementById(`pane-${name}`)?.classList.add('active');
+  if (name === 'resources') fetchResources();
+}
+
+function setPaneOutput(html) { document.getElementById('pane-output').innerHTML = html; }
+function setPaneSecurity(html) { document.getElementById('pane-security').innerHTML = html; }
+
+// ══════════════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════════════
+function getLang() { return document.getElementById('lang-select').value; }
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// AI ASSISTANT, TERMINAL, EXPORT & RESOURCES
+// ══════════════════════════════════════════════════════════════════
+async function askAI() {
+  const code = editor ? editor.getValue() : "";
+  switchTab('ai');
+  document.getElementById('ai-response').innerHTML = '<span class="spinner"></span> Consulting AI Assistant...';
+  try {
+    const res = await fetch(`${API}/ai/assist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: "Analyze this code and explain functionality or potential issues", code_context: code, language: getLang() })
+    });
+    const data = await res.json();
+    document.getElementById('ai-response').innerHTML = `
+      <div style="font-size:13px; line-height:1.6; white-space:pre-wrap;">${escHtml(data.response)}</div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        ${data.suggestions.map(s => `<span style="font-size:11px; background:#30363d; padding:3px 8px; border-radius:4px;">💡 ${escHtml(s)}</span>`).join('')}
+      </div>
+    `;
+    toast("AI review ready", "success");
+  } catch(e) {
+    document.getElementById('ai-response').textContent = "Failed to consult AI assistant: " + e.message;
+  }
+}
+
+async function fetchResources() {
+  try {
+    const res = await fetch(`${API}/system/resources`);
+    if (res.ok) {
+      const data = await res.json();
+      document.getElementById('res-cpu').textContent = `${data.cpu_percent}%`;
+      document.getElementById('res-cpu-bar').style.width = `${data.cpu_percent}%`;
+      document.getElementById('res-mem').textContent = `${data.memory_percent}% (${data.memory_used_mb}MB)`;
+      document.getElementById('res-mem-bar').style.width = `${data.memory_percent}%`;
+    }
+  } catch(e) {}
+}
+
+function downloadZip() {
+  window.open(`${API}/files/export-zip/default`, '_blank');
+  toast("Exporting project files as ZIP...", "info");
+}
+
+function handleTermInput(e) {
+  if (e.key === 'Enter') {
+    const input = document.getElementById('term-input');
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    const term = document.getElementById('term-output');
+    term.textContent += `\n$ ${cmd}\n`;
+    if (cmd === 'clear') {
+      term.textContent = "$ ";
+      input.value = "";
+      return;
+    }
+    // Simulate terminal response inside sandbox
+    setTimeout(() => {
+      if (cmd.startsWith("python")) term.textContent += "Python 3.9.6 (default)\nType 'help', 'copyright', 'credits' or 'license' for more information.\n$ ";
+      else if (cmd === "ls") term.textContent += "main.py  test.py  scratch.py\n$ ";
+      else if (cmd === "whoami") term.textContent += "sandbox_user (UID 1000)\n$ ";
+      else term.textContent += `[sandbox] Executed: ${cmd}\n$ `;
+      term.scrollTop = term.scrollHeight;
+    }, 150);
+    input.value = "";
+  }
+}
+
+// Poll resources every 5 seconds
+setInterval(fetchResources, 5000);
+</script>
+</body>
+</html>
